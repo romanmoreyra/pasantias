@@ -141,11 +141,16 @@ const keys = {}; // <--- Declaración global y única
 let coins = 0;
 let selectedSkin = 0;
 let ownedSkins = [0];
-let upgrades = { speed: 0, fire: 0, shield: 0, multi: 0, dash: 0, burst: 0 };
+let upgrades = { speed: 0, fire: 0, shield: 0, multi: 0, dash: 0, burst: 0, vamp: 0, reflect: 0, petboost: 0, magnet: 0 };
 const ENEMY_TYPES = [
-    'basic', 'fast', 'shooter', 'big', 'zigzag', 'tank', 'splitter', 'sniper', 'healer', 'swarm', 'ghost', 'bomber', 'shielded', 'teleport', 'miniboss'
+    'basic', 'fast', 'shooter', 'big', 'zigzag', 'tank', 'splitter', 'sniper', 'healer', 'swarm', 'ghost', 'bomber', 'shielded', 'teleport', 'miniboss',
+    // Nuevos enemigos
+    'splitter2', 'multishot', 'invisible', 'spawner', 'charger', 'boss1', 'boss2', 'boss3'
 ];
-const POWERUP_TYPES = ['life', 'shield', 'multi', 'slow', 'bomb', 'laser', 'score', 'invincible', 'dash', 'burst'];
+const POWERUP_TYPES = ['life', 'shield', 'multi', 'slow', 'bomb', 'laser', 'score', 'invincible', 'dash', 'burst',
+    // Nuevos power-ups
+    'magnet', 'freeze', 'triple', 'petboost', 'reflect', 'vampire', 'random']
+;
 const COLORS = {
     player: '#00c3ff',
     enemy: '#ff3c3c',
@@ -154,6 +159,8 @@ const COLORS = {
     shield: '#00fff7',
     bg: '#10131c',
     particle: '#fff',
+    boss: '#ff4fa3',
+    pet: '#ff9900',
 };
 const SKINS = [
     { name: 'Cian', color: '#00c3ff', price: 0 },
@@ -166,19 +173,28 @@ const SKINS = [
     { name: 'Naranja', color: '#ff9900', price: 170 }
 ];
 const UPGRADE_LIST = [
-    { key: 'speed', name: 'Velocidad', price: lvl=>80+lvl*60, max: 5 },
-    { key: 'fire', name: 'Disparo Rápido', price: lvl=>90+lvl*70, max: 5 },
-    { key: 'shield', name: 'Escudo Extra', price: lvl=>120+lvl*90, max: 3 },
-    { key: 'multi', name: 'Multi-Disparo', price: lvl=>140+lvl*100, max: 3 },
-    { key: 'dash', name: 'Dash', price: lvl=>200+lvl*120, max: 1 },
-    { key: 'burst', name: 'Burst', price: lvl=>220+lvl*130, max: 1 }
+    { key: 'speed', name: 'Velocidad', price: lvl=>80+lvl*60, max: 5, value: lvl=>7+lvl*1.2 },
+    { key: 'fire', name: 'Disparo Rápido', price: lvl=>90+lvl*70, max: 5, value: lvl=>12-Math.min(7,lvl*2) },
+    { key: 'shield', name: 'Escudo Extra', price: lvl=>120+lvl*90, max: 3, value: lvl=>lvl },
+    { key: 'multi', name: 'Multi-Disparo', price: lvl=>140+lvl*100, max: 3, value: lvl=>lvl*5 },
+    { key: 'dash', name: 'Dash', price: lvl=>200+lvl*120, max: 1, value: lvl=>!!lvl },
+    { key: 'burst', name: 'Burst', price: lvl=>220+lvl*130, max: 1, value: lvl=>!!lvl },
+    // Nuevas mejoras con valor y precio
+    { key: 'vamp', name: 'Vampirismo', price: lvl=>300+lvl*180, max: 2, value: lvl=>lvl*0.2 }, // 20%/40% probabilidad de curar al dañar
+    { key: 'reflect', name: 'Reflejar Balas', price: lvl=>350+lvl*200, max: 2, value: lvl=>lvl*0.2 }, // 20%/40% probabilidad de reflejar
+    { key: 'petboost', name: 'Potenciar Compañero', price: lvl=>400+lvl*220, max: 2, value: lvl=>1+lvl*0.5 }, // +0.5 velocidad/efecto
+    { key: 'magnet', name: 'Imán', price: lvl=>250+lvl*150, max: 2, value: lvl=>lvl*60 } // radio de atracción
 ];
 const COMPANIONS = [
     { name: 'Ninguno', color: null, price: 0, effect: null },
     { name: 'MiniBot', color: '#ff3c3c', price: 300, effect: 'disparo' },
-    { name: 'Defensor', color: '#00ffb3', price: 400, effect: 'escudo' },
     { name: 'Curador', color: '#ffff1c', price: 500, effect: 'cura' },
-    { name: 'Rápido', color: '#b300ff', price: 600, effect: 'velocidad' }
+    { name: 'Rápido', color: '#b300ff', price: 600, effect: 'velocidad' },
+    // Nuevos compañeros
+    { name: 'Magneto', color: '#00c3ff', price: 700, effect: 'magnet' },
+    { name: 'Reflector', color: '#ff4fa3', price: 800, effect: 'reflect' },
+    { name: 'Vampibot', color: '#ff9900', price: 900, effect: 'vampire' },
+    { name: 'Congelador', color: '#00fff7', price: 950, effect: 'freeze' }
 ];
 
 // --- VARIABLES DE PROGRESO Y ESTADO ---
@@ -190,7 +206,7 @@ let companions = [];
 class Player {
     constructor() {
         this.x = W/2; this.y = H-60;
-        this.r = 28; this.speed = 7+upgrades.speed*1.2;
+        this.r = 28; this.speed = 7+upgrades.speed*1.2+(upgrades.petboost?upgrades.petboost*0.5:0);
         this.cooldown = 0; this.shield = upgrades.shield;
         this.multi = upgrades.multi*5;
         this.color = SKINS[selectedSkin].color;
@@ -199,6 +215,9 @@ class Player {
         this.dash = upgrades.dash>0;
         this.dashCooldown = 0;
         this.burst = upgrades.burst>0?1:0;
+        this.vamp = upgrades.vamp>0;
+        this.reflect = upgrades.reflect>0;
+        this.magnet = upgrades.magnet>0;
     }
     move(dx) {
         if(this.dash && this.dashCooldown<=0 && keys['Shift']) {
@@ -254,22 +273,26 @@ class Enemy {
     constructor(type, x, y, speed) {
         this.type = type;
         this.x = x; this.y = y;
-        this.r = type==='big'||type==='tank'||type==='miniboss'?44:type==='splitter'?22:type==='swarm'?14:26;
+        this.r = type==='big'||type==='tank'||type==='miniboss'||type==='boss1'||type==='boss2'||type==='boss3'?54:type==='splitter'||type==='splitter2'?22:type==='swarm'?14:26;
         this.speed = speed;
-        this.cooldown = type==='shooter'||type==='sniper'?Math.random()*80+60:0;
-        this.hp = type==='big'?3:type==='tank'?8:type==='miniboss'?20:type==='splitter'?1:type==='swarm'?1:type==='shielded'?2:1;
-        this.color = COLORS.enemy;
+        this.cooldown = type==='shooter'||type==='sniper'||type==='multishot'?Math.random()*80+60:0;
+        this.hp = type==='big'?3:type==='tank'?8:type==='miniboss'?20:type==='splitter'?1:type==='splitter2'?1:type==='swarm'?1:type==='shielded'?2:type==='boss1'?60:type==='boss2'?90:type==='boss3'?120:1;
+        this.color = type.startsWith('boss')?COLORS.boss:COLORS.enemy;
         this.dir = Math.random()<0.5?-1:1;
-        this.alpha = type==='ghost'?0.4:1;
-        this.shield = type==='shielded'?2:0;
+        this.alpha = type==='ghost'||type==='invisible'?0.3:1;
+        this.shield = type==='shielded'||type==='boss2'?2:0;
         this.teleportTimer = type==='teleport'?Math.random()*120+80:0;
+        this.spawnTimer = type==='spawner'?Math.random()*120+80:0;
+        this.chargeTimer = type==='charger'?Math.random()*100+60:0;
+        this.invisible = type==='invisible';
     }
     update() {
         switch(this.type) {
-            case 'fast': this.y += this.speed*2; break;
+            case 'fast': this.y += this.speed*2.2; break;
             case 'zigzag': this.y += this.speed; this.x += Math.sin(this.y/30)*3; break;
             case 'tank': this.y += this.speed*0.7; break;
             case 'splitter': this.y += this.speed*1.2; break;
+            case 'splitter2': this.y += this.speed*1.5; break;
             case 'swarm': this.y += this.speed*2.5; break;
             case 'ghost': this.y += this.speed*1.1; break;
             case 'bomber': this.y += this.speed; if(Math.random()<0.01) bullets.push(new Bullet(this.x, this.y+this.r, 8, 'enemy')); break;
@@ -278,6 +301,13 @@ class Enemy {
             case 'sniper': this.y += this.speed*0.8; this.cooldown--; if(this.cooldown<=0){ bullets.push(new Bullet(this.x, this.y+this.r, 12, 'enemy')); this.cooldown = 120+Math.random()*60; } break;
             case 'healer': this.y += this.speed; if(Math.random()<0.01) enemies.forEach(e=>e.hp+=0.2); break;
             case 'miniboss': this.y += this.speed*0.5; if(Math.random()<0.03) bullets.push(new Bullet(this.x, this.y+this.r, 10, 'enemy')); break;
+            case 'multishot': this.y += this.speed; this.cooldown--; if(this.cooldown<=0){ for(let a=-1;a<=1;a++) bullets.push(new Bullet(this.x+18*a, this.y+this.r, 8, 'enemy')); this.cooldown = 80+Math.random()*40; } break;
+            case 'spawner': this.y += this.speed*0.7; this.spawnTimer--; if(this.spawnTimer<=0){ enemies.push(new Enemy('swarm', this.x+Math.random()*40-20, this.y+30, 2+level*0.3)); this.spawnTimer = Math.random()*120+80; } break;
+            case 'charger': this.y += this.speed*0.5; this.chargeTimer--; if(this.chargeTimer<=0){ this.y += 40; this.chargeTimer = Math.random()*100+60; } break;
+            case 'boss1': this.y += this.speed*0.3; if(Math.random()<0.04) bullets.push(new Bullet(this.x, this.y+this.r, 12, 'enemy')); break;
+            case 'boss2': this.y += this.speed*0.2; if(Math.random()<0.03) for(let a=-2;a<=2;a++) bullets.push(new Bullet(this.x+18*a, this.y+this.r, 10, 'enemy')); break;
+            case 'boss3': this.y += this.speed*0.15; if(Math.random()<0.02) { for(let i=0;i<8;i++) bullets.push(new Bullet(this.x+Math.cos(i*Math.PI/4)*40, this.y+Math.sin(i*Math.PI/4)*40, 8, 'enemy')); } break;
+            case 'invisible': this.y += this.speed*1.3; break;
             default: this.y += this.speed;
         }
         if(this.type==='shooter') {
@@ -293,9 +323,9 @@ class Enemy {
         ctx.globalAlpha = this.alpha||1;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
-        ctx.fillStyle = this.type==='tank'?'#888':this.type==='ghost'?'#fff8':this.type==='miniboss'?'#ff9900':this.type==='healer'?'#00ffb3':this.type==='swarm'?'#b300ff':this.type==='shielded'?'#00c3ff':this.color;
-        ctx.shadowColor = this.type==='miniboss'?'#ff9900':this.color;
-        ctx.shadowBlur = 12;
+        ctx.fillStyle = this.type.startsWith('boss')?COLORS.boss:(this.type==='tank'?'#888':this.type==='ghost'?'#fff8':this.type==='miniboss'?'#ff9900':this.type==='healer'?'#00ffb3':this.type==='swarm'?'#b300ff':this.type==='shielded'?'#00c3ff':this.color);
+        ctx.shadowColor = this.type.startsWith('boss')?COLORS.boss:(this.type==='miniboss'?'#ff9900':this.color);
+        ctx.shadowBlur = this.type.startsWith('boss')?24:12;
         ctx.fill();
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
@@ -337,7 +367,7 @@ class PowerUp {
         this.x = x; this.y = y;
         this.r = 18;
         this.color = COLORS.powerup;
-        this.icon = type==='life'?'❤':type==='shield'?'🛡️':type==='multi'?'✴️':type==='slow'?'🐢':type==='bomb'?'💣':type==='laser'?'🔫':type==='score'?'💎':'⭐';
+        this.icon = type==='life'?'❤':type==='shield'?'🛡️':type==='multi'?'✴️':type==='slow'?'🐢':type==='bomb'?'💣':type==='laser'?'🔫':type==='score'?'💎':type==='invincible'?'⭐':type==='dash'?'⚡':type==='burst'?'💥':type==='magnet'?'🧲':type==='freeze'?'❄️':type==='triple'?'🔱':type==='petboost'?'🤖':type==='reflect'?'🔄':type==='vampire'?'🦇':'❔';
     }
     update() { this.y += 3; }
     draw() {
@@ -398,7 +428,7 @@ class Companion {
             this.cooldown--;
             if(this.cooldown<=0) {
                 bullets.push(new Bullet(this.x, this.y-20, -10));
-                this.cooldown = 30;
+                this.cooldown = 30-(upgrades.petboost?upgrades.petboost*5:0);
             }
         }
         if(COMPANIONS[this.type].effect==='cura' && Math.random()<0.002) {
@@ -408,7 +438,23 @@ class Companion {
             if(player.shield<1) player.shield=1;
         }
         if(COMPANIONS[this.type].effect==='velocidad') {
-            player.speed += 0.2;
+            player.speed += 0.12+(upgrades.petboost?upgrades.petboost*0.06:0); // Subido levemente
+        }
+        if(COMPANIONS[this.type].effect==='magnet') {
+            // Atrae power-ups y monedas
+            powerUps.forEach(p=>{if(Math.abs(p.x-this.x)<120&&Math.abs(p.y-this.y)<120){p.x+=(this.x-p.x)*0.08;p.y+=(this.y-p.y)*0.08;}});
+        }
+        if(COMPANIONS[this.type].effect==='reflect') {
+            // Refleja balas enemigas cercanas
+            bullets.forEach(b=>{if(b.owner==='enemy'&&Math.abs(b.x-this.x)<40&&Math.abs(b.y-this.y)<40){b.owner='player';b.vy*=-1;b.color=COLORS.bullet;}});
+        }
+        if(COMPANIONS[this.type].effect==='vampire') {
+            // Probabilidad de curar al dañar
+            if(Math.random()<0.01&&lives<5) lives++;
+        }
+        if(COMPANIONS[this.type].effect==='freeze') {
+            // Congela enemigos cercanos
+            enemies.forEach(e=>{if(Math.abs(e.x-this.x)<60&&Math.abs(e.y-this.y)<60){e.speed*=0.95;}});
         }
     }
     draw() {
@@ -427,23 +473,7 @@ class Companion {
                 ctx.fillStyle = '#fff';
                 ctx.fillRect(this.x-6, this.y-2+Math.sin(this.anim)*4, 12, 4);
                 break;
-            case 2: // Defensor: escudo animado
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
-                ctx.fillStyle = this.color;
-                ctx.globalAlpha = 0.7+0.2*Math.sin(this.anim);
-                ctx.shadowColor = this.color;
-                ctx.shadowBlur = 16;
-                ctx.fill();
-                ctx.shadowBlur = 0;
-                ctx.globalAlpha = 1;
-                ctx.strokeStyle = '#00fff7';
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r+6+Math.sin(this.anim)*2, 0, 2*Math.PI);
-                ctx.stroke();
-                break;
-            case 3: // Curador: cruz y brillo
+            case 2: // Curador: cruz y brillo
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
                 ctx.fillStyle = this.color;
@@ -455,7 +485,7 @@ class Companion {
                 ctx.fillRect(this.x-3, this.y-10, 6, 20);
                 ctx.fillRect(this.x-10, this.y-3, 20, 6);
                 break;
-            case 4: // Rápido: rayo animado
+            case 3: // Rápido: rayo animado
                 ctx.save();
                 ctx.translate(this.x, this.y);
                 ctx.rotate(Math.sin(this.anim)*0.2);
@@ -467,6 +497,54 @@ class Companion {
                 ctx.fill();
                 ctx.shadowBlur = 0;
                 ctx.restore();
+                break;
+            case 4: // Magneto
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 14;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = '20px Segoe UI';
+                ctx.fillStyle = '#181818';
+                ctx.fillText('🧲', this.x, this.y+1);
+                break;
+            case 5: // Reflector
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 14;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = '20px Segoe UI';
+                ctx.fillStyle = '#181818';
+                ctx.fillText('🔄', this.x, this.y+1);
+                break;
+            case 6: // Vampibot
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 14;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = '20px Segoe UI';
+                ctx.fillStyle = '#181818';
+                ctx.fillText('🦇', this.x, this.y+1);
+                break;
+            case 7: // Congelador
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 14;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.font = '20px Segoe UI';
+                ctx.fillStyle = '#181818';
+                ctx.fillText('❄️', this.x, this.y+1);
                 break;
             default:
                 ctx.beginPath();
@@ -481,14 +559,22 @@ class Companion {
     }
 }
 function spawnEnemy() {
-    const type = ENEMY_TYPES[Math.floor(Math.random()*Math.min(ENEMY_TYPES.length, 1+level/2))];
+    let type;
+    // Boss cada 7 niveles
+    if(level>0 && level%7===0 && !enemies.some(e=>e.type.startsWith('boss'))) {
+        type = ['boss1','boss2','boss3'][(level/7-1)%3];
+    } else {
+        type = ENEMY_TYPES[Math.floor(Math.random()*Math.min(ENEMY_TYPES.length, 1+level/2))];
+    }
     const x = 60+Math.random()*(W-120);
     const y = -40;
     const speed = 2+level*0.3+Math.random();
     enemies.push(new Enemy(type, x, y, speed));
 }
 function spawnPowerUp() {
-    const type = POWERUP_TYPES[Math.floor(Math.random()*Math.min(POWERUP_TYPES.length, 1+level/3))];
+    let type;
+    if(Math.random()<0.15) type = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+    else type = POWERUP_TYPES[Math.floor(Math.random()*Math.min(POWERUP_TYPES.length, 1+level/3))];
     const x = 60+Math.random()*(W-120);
     const y = -30;
     powerUps.push(new PowerUp(type, x, y));
@@ -599,10 +685,25 @@ function gameLoop(now) {
             for(let j=enemies.length-1;j>=0;j--) {
                 const e = enemies[j];
                 if(collide(b,e)) {
+                    if(player.vamp || (companions[0]&&COMPANIONS[companions[0].type].effect==='vampire')) { if(Math.random()<0.2&&lives<5) lives++; }
+                    if(player.reflect || (companions[0]&&COMPANIONS[companions[0].type].effect==='reflect')) { score += 5; }
                     e.hp--;
                     if(e.hp<=0) {
-                        score += 20+level*2;
-                        addCoins(5+Math.floor(level/2));
+                        // Splitter genera más enemigos
+                        if(e.type==='splitter'||e.type==='splitter2') {
+                            for(let s=0;s<2+(e.type==='splitter2'?2:0);s++) enemies.push(new Enemy('swarm', e.x+Math.random()*30-15, e.y, 2+level*0.3));
+                        }
+                        // Boss recompensa
+                        if(e.type.startsWith('boss')) {
+                            addCoins(100+level*10);
+                            score += 500+level*20;
+                            for(let k=0;k<40;k++) particles.push(new Particle(e.x,e.y,COLORS.boss));
+                            // Power-up especial
+                            powerUps.push(new PowerUp('random', e.x, e.y));
+                        } else {
+                            score += 20+level*2;
+                            addCoins(5+Math.floor(level/2));
+                        }
                         for(let k=0;k<16;k++) particles.push(new Particle(e.x,e.y,COLORS.enemy));
                         enemies.splice(j,1);
                     } else {
@@ -618,6 +719,9 @@ function gameLoop(now) {
     for(let i=bullets.length-1;i>=0;i--) {
         const b = bullets[i];
         if(b.owner==='enemy' && collide(b,player)) {
+            if(player.reflect || (companions[0]&&COMPANIONS[companions[0].type].effect==='reflect')) {
+                b.owner = 'player'; b.vy *= -1; b.color = COLORS.bullet; continue;
+            }
             if(player.shield>0) { player.shield=0; }
             else loseLife();
             for(let k=0;k<10;k++) particles.push(new Particle(player.x,player.y,COLORS.shield));
@@ -670,6 +774,17 @@ function gameLoop(now) {
             }
             if(p.type==='dash') player.dash = true;
             if(p.type==='burst') player.burst = 1;
+            if(p.type==='magnet') player.magnet = true;
+            if(p.type==='freeze') { enemies.forEach(e=>e.speed*=0.2); setTimeout(()=>{enemies.forEach(e=>e.speed*=5);}, 2500+level*100); }
+            if(p.type==='triple') { for(let a=-1;a<=1;a++) bullets.push(new Bullet(player.x+18*a, player.y-30, -12)); }
+            if(p.type==='petboost') { upgrades.petboost = Math.min(2, (upgrades.petboost||0)+1); }
+            if(p.type==='reflect') player.reflect = true;
+            if(p.type==='vampire') player.vamp = true;
+            if(p.type==='random') {
+                // Da un power-up aleatorio
+                const rand = POWERUP_TYPES[Math.floor(Math.random()*POWERUP_TYPES.length)];
+                powerUps.push(new PowerUp(rand, player.x, player.y-40));
+            }
             for(let k=0;k<12;k++) particles.push(new Particle(p.x,p.y,COLORS.powerup));
             powerUps.splice(i,1);
         }
@@ -689,7 +804,7 @@ function gameLoop(now) {
         if(level%5===0 && ENEMY_TYPES.length<6) ENEMY_TYPES.push('fast','shooter');
     }
     // Fin del juego: nivel máximo
-    if(level>=20) {
+    if(level>=25) {
         gameState = 'gameover';
         document.getElementById('game-over').style.display = '';
         document.getElementById('final-score').innerHTML = `<b>¡Victoria total!</b><br>Puntaje final: ${score}<br>Nivel máximo alcanzado: ${level}<br>Monedas ganadas: ${coins}`;
@@ -731,16 +846,21 @@ function saveProgress() {
 }
 function loadProgress() {
     const data = localStorage.getItem('galacticRunnerSave');
+    const defaultUpgrades = { speed:0, fire:0, shield:0, multi:0, dash:0, burst:0, vamp:0, reflect:0, petboost:0, magnet:0 };
     if(data) {
         try {
             const save = JSON.parse(data);
             coins = save.coins ?? 0;
             selectedSkin = save.selectedSkin ?? 0;
             ownedSkins = save.ownedSkins ?? [0];
-            upgrades = save.upgrades ?? { speed:0, fire:0, shield:0, multi:0, dash:0, burst:0 };
+            upgrades = { ...defaultUpgrades, ...(save.upgrades ?? {}) };
             unlockedCompanions = save.unlockedCompanions ?? [0];
             selectedCompanion = save.selectedCompanion ?? 0;
-        } catch(e) {}
+        } catch(e) {
+            upgrades = { ...defaultUpgrades };
+        }
+    } else {
+        upgrades = { ...defaultUpgrades };
     }
 }
 // Guardar progreso en cada compra, mejora, cambio de skin o compañero, y al ganar monedas
@@ -884,6 +1004,16 @@ function renderShop() {
             card.appendChild(btn);
             compDiv.appendChild(card);
         });
+    }
+    // Botón de ayuda
+    if (!document.getElementById('help-btn')) {
+        const helpBtn = document.createElement('button');
+        helpBtn.id = 'help-btn';
+        helpBtn.innerText = '¿Qué hace cada mejora y compañero?';
+        helpBtn.style = 'background:linear-gradient(90deg,#00c3ff,#00ffb3); color:#181818; border:none; border-radius:8px; padding:10px 28px; font-size:1.05em; font-weight:bold; margin:18px 0 0 0; cursor:pointer; box-shadow:0 2px 8px #0004; display:block; width:100%;';
+        helpBtn.onclick = showHelpModal;
+        const shop = document.getElementById('shop-menu');
+        shop.appendChild(helpBtn);
     }
 }
 // --- FUNCIONES PARA ABRIR Y CERRAR LA TIENDA ---
@@ -1043,6 +1173,39 @@ gameOver = function() {
         }
     }, 500);
 };
+function showHelpModal() {
+    const helpDiv = document.createElement('div');
+    helpDiv.id = 'help-modal';
+    helpDiv.style = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,20,40,0.98);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    helpDiv.innerHTML = `<div style='background:#181c2b;padding:38px 48px 32px 48px;border-radius:18px;box-shadow:0 2px 32px #00c3ff88;text-align:left;max-width:540px;min-width:320px;color:#fff;font-size:1.08em;position:relative;'>
+        <h2 style='color:#00c3ff;text-align:center;'>¿Qué hace cada mejora y compañero?</h2>
+        <h3 style='color:#ffff1c;margin-bottom:6px;'>Mejoras</h3>
+        <ul style='margin-bottom:18px;'>
+            <li><b>Velocidad:</b> Aumenta la velocidad de movimiento del jugador.</li>
+            <li><b>Disparo Rápido:</b> Disminuye el tiempo entre disparos.</li>
+            <li><b>Escudo Extra:</b> Añade protección extra contra golpes.</li>
+            <li><b>Multi-Disparo:</b> Permite disparar varias balas a la vez.</li>
+            <li><b>Dash:</b> Permite moverse rápidamente usando Shift.</li>
+            <li><b>Burst:</b> Disparo triple especial al cargar.</li>
+            <li><b>Vampirismo:</b> Probabilidad de recuperar vida al dañar enemigos.</li>
+            <li><b>Reflejar Balas:</b> Probabilidad de reflejar balas enemigas cercanas.</li>
+            <li><b>Potenciar Compañero:</b> Mejora la velocidad y efecto del compañero.</li>
+            <li><b>Imán:</b> Atrae power-ups y monedas cercanas.</li>
+        </ul>
+        <h3 style='color:#00ffb3;margin-bottom:6px;'>Compañeros</h3>
+        <ul>
+            <li><b>MiniBot:</b> Dispara automáticamente a los enemigos.</li>
+            <li><b>Curador:</b> Puede curar al jugador ocasionalmente.</li>
+            <li><b>Rápido:</b> Aumenta la velocidad del jugador.</li>
+            <li><b>Magneto:</b> Atrae power-ups y monedas hacia el jugador.</li>
+            <li><b>Reflector:</b> Refleja balas enemigas cercanas.</li>
+            <li><b>Vampibot:</b> Puede curar al dañar enemigos.</li>
+            <li><b>Congelador:</b> Ralentiza enemigos cercanos.</li>
+        </ul>
+        <button onclick='document.getElementById("help-modal").remove()' style='background:linear-gradient(90deg,#00c3ff,#ffff1c);color:#181818;border:none;border-radius:8px;padding:12px 38px;font-size:1.1em;font-weight:bold;margin-top:18px;cursor:pointer;box-shadow:0 2px 8px #0004;display:block;margin-left:auto;margin-right:auto;'>Cerrar</button>
+    </div>`;
+    document.body.appendChild(helpDiv);
+}
     </script>
 </body>
 </html>
